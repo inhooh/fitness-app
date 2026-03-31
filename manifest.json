@@ -1,0 +1,22 @@
+{
+  "name": "함께 걷기 - 운동 기록",
+  "short_name": "함께걷기",
+  "description": "아버지와 아들이 함께하는 운동 기록 & 동기부여 앱",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
