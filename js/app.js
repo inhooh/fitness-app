@@ -41,9 +41,23 @@ const App = {
   },
 
   navigate(page) {
+    // 산책 중 다른 페이지로 이동 시 확인
+    if (GPS.isTracking && page !== 'walk') {
+      if (!confirm('산책이 진행 중입니다. 페이지를 이동하면 현재 산책이 종료됩니다. 이동하시겠습니까?')) {
+        // 네비게이션 버튼 상태 복원
+        document.querySelectorAll('.nav-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.page === 'walk');
+        });
+        return;
+      }
+      // 산책 종료 후 기록 저장
+      this._autoSaveWalk();
+    }
+
     this.currentPage = page;
     Charts.destroyAll();
     clearInterval(this.walkTimerInterval);
+    clearInterval(this._recordsRefreshInterval);
 
     document.querySelectorAll('.nav-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.page === page);
@@ -59,6 +73,27 @@ const App = {
 
     app.querySelector('.page-enter')?.offsetHeight; // force reflow for animation
   },
+
+  // 산책 중 페이지 이동 시 자동 저장
+  async _autoSaveWalk() {
+    clearInterval(this.walkTimerInterval);
+    const result = GPS.stop();
+    const uid = Storage.getCurrentUser();
+    const profile = Storage.getProfile(uid);
+    const cal = Calories.calculate(profile.weight, result.distance);
+
+    if (result.distance > 0.001) {
+      await Storage.addRecord({
+        userId: uid,
+        distance: result.distance,
+        duration: result.duration,
+        calories: cal,
+        positions: result.positions.length
+      });
+    }
+  },
+
+  _recordsRefreshInterval: null,
 
   /* ===== SETUP SCREEN ===== */
   showSetup() {
@@ -258,7 +293,14 @@ const App = {
     `;
   },
 
-  initHome() {
+  async initHome() {
+    // Refresh data from Firestore on each visit
+    await Storage.refresh();
+
+    // Re-render with fresh data
+    const app = document.getElementById('app');
+    app.innerHTML = this.renderHome();
+
     // User switch
     document.querySelectorAll('.user-switch-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -436,7 +478,12 @@ const App = {
 
     return `
       <div class="page-enter">
-        <h1 class="page-title">📊 기록</h1>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h1 class="page-title" style="margin-bottom:0;">📊 기록</h1>
+          <button class="btn btn-ghost" id="records-refresh" style="padding:8px 12px; font-size:13px;">
+            <span class="material-icons-round" style="font-size:18px;">refresh</span> 새로고침
+          </button>
+        </div>
 
         <!-- User Switch -->
         <div class="user-switch">
@@ -492,6 +539,24 @@ const App = {
     this._recordsMonth = now.getMonth();
 
     this._renderRecordsData();
+
+    // Refresh button
+    document.getElementById('records-refresh')?.addEventListener('click', async () => {
+      const btn = document.getElementById('records-refresh');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-icons-round" style="font-size:18px; animation: spin 1s linear infinite;">refresh</span> 갱신 중...';
+      await Storage.refresh();
+      this._renderRecordsData();
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-icons-round" style="font-size:18px;">refresh</span> 새로고침';
+    });
+
+    // Auto refresh every 30 seconds
+    this._recordsRefreshInterval = setInterval(async () => {
+      if (this.currentPage !== 'records') return;
+      await Storage.refresh();
+      this._renderRecordsData();
+    }, 30000);
 
     // User switch
     document.querySelectorAll('.user-switch-btn').forEach(btn => {

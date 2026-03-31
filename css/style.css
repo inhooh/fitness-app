@@ -488,6 +488,8 @@ body {
   color: var(--primary-light);
 }
 
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* ===== Walk Tracking Screen ===== */
 .walk-screen { text-align: center; padding-top: 20px; }
 
