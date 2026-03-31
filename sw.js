@@ -1,8 +1,9 @@
-const CACHE_NAME = 'fitness-v1';
+const CACHE_NAME = 'fitness-v2';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
+  './js/firebase-config.js',
   './js/app.js',
   './js/gps.js',
   './js/storage.js',

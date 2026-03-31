@@ -1,71 +1,127 @@
+/* ===== Storage Module - Firebase Firestore + localStorage cache ===== */
 const Storage = {
-  KEYS: {
-    PROFILES: 'fitness_profiles',
-    RECORDS: 'fitness_records',
-    CURRENT_USER: 'fitness_current_user'
+  // Local cache
+  _profiles: {},
+  _records: [],
+  _ready: false,
+
+  // Firestore refs
+  get profilesRef() { return db.collection('profiles'); },
+  get recordsRef() { return db.collection('records'); },
+
+  // ===== Initialize: load all data from Firestore into local cache =====
+  async init() {
+    try {
+      // Race Firestore load against a 5s timeout
+      const firestoreLoad = async () => {
+        const profileSnap = await this.profilesRef.get();
+        this._profiles = {};
+        profileSnap.forEach(doc => {
+          this._profiles[doc.id] = doc.data();
+        });
+
+        const recordSnap = await this.recordsRef.orderBy('date', 'desc').get();
+        this._records = [];
+        recordSnap.forEach(doc => {
+          this._records.push({ id: doc.id, ...doc.data() });
+        });
+
+        this._saveLocalCache();
+      };
+
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 5000)
+      );
+
+      await Promise.race([firestoreLoad(), timeout]);
+      this._ready = true;
+    } catch (err) {
+      console.warn('Firestore load failed, using local cache:', err.message);
+      this._loadLocalCache();
+      this._ready = true;
+    }
   },
 
-  init() {
-    if (!localStorage.getItem(this.KEYS.PROFILES)) {
-      localStorage.setItem(this.KEYS.PROFILES, JSON.stringify({}));
-    }
-    if (!localStorage.getItem(this.KEYS.RECORDS)) {
-      localStorage.setItem(this.KEYS.RECORDS, JSON.stringify([]));
-    }
+  _saveLocalCache() {
+    localStorage.setItem('fitness_profiles', JSON.stringify(this._profiles));
+    localStorage.setItem('fitness_records', JSON.stringify(this._records));
   },
 
-  // Profiles
+  _loadLocalCache() {
+    this._profiles = JSON.parse(localStorage.getItem('fitness_profiles') || '{}');
+    this._records = JSON.parse(localStorage.getItem('fitness_records') || '[]');
+  },
+
+  // ===== Profiles =====
   getProfiles() {
-    return JSON.parse(localStorage.getItem(this.KEYS.PROFILES) || '{}');
+    return this._profiles;
   },
 
-  saveProfile(id, profile) {
-    const profiles = this.getProfiles();
-    profiles[id] = { ...profiles[id], ...profile };
-    localStorage.setItem(this.KEYS.PROFILES, JSON.stringify(profiles));
+  async saveProfile(id, profile) {
+    this._profiles[id] = { ...this._profiles[id], ...profile };
+    this._saveLocalCache();
+    try {
+      await this.profilesRef.doc(id).set(this._profiles[id], { merge: true });
+    } catch (err) {
+      console.warn('Firestore saveProfile failed:', err);
+    }
   },
 
   getProfile(id) {
-    return this.getProfiles()[id] || null;
+    return this._profiles[id] || null;
   },
 
   hasProfiles() {
-    return Object.keys(this.getProfiles()).length >= 2;
+    return Object.keys(this._profiles).length >= 2;
   },
 
-  // Current user
+  // ===== Current user (local only) =====
   setCurrentUser(id) {
-    localStorage.setItem(this.KEYS.CURRENT_USER, id);
+    localStorage.setItem('fitness_current_user', id);
   },
 
   getCurrentUser() {
-    return localStorage.getItem(this.KEYS.CURRENT_USER);
+    return localStorage.getItem('fitness_current_user');
   },
 
-  // Records
+  // ===== Records =====
   getRecords() {
-    return JSON.parse(localStorage.getItem(this.KEYS.RECORDS) || '[]');
+    return this._records;
   },
 
-  addRecord(record) {
-    const records = this.getRecords();
-    records.push({
-      id: Date.now(),
+  async addRecord(record) {
+    const newRecord = {
       ...record,
-      date: record.date || new Date().toISOString()
-    });
-    localStorage.setItem(this.KEYS.RECORDS, JSON.stringify(records));
-    return records[records.length - 1];
+      date: record.date || new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const docRef = await this.recordsRef.add(newRecord);
+      newRecord.id = docRef.id;
+    } catch (err) {
+      console.warn('Firestore addRecord failed:', err);
+      newRecord.id = 'local_' + Date.now();
+    }
+
+    this._records.push(newRecord);
+    this._saveLocalCache();
+    return newRecord;
   },
 
-  deleteRecord(id) {
-    const records = this.getRecords().filter(r => r.id !== id);
-    localStorage.setItem(this.KEYS.RECORDS, JSON.stringify(records));
+  async deleteRecord(id) {
+    this._records = this._records.filter(r => r.id !== id);
+    this._saveLocalCache();
+    try {
+      await this.recordsRef.doc(id).delete();
+    } catch (err) {
+      console.warn('Firestore deleteRecord failed:', err);
+    }
   },
 
-  // Filtered records
+  // ===== Filtered records (sync - reads from cache) =====
   getUserRecords(userId) {
-    return this.getRecords().filter(r => r.userId === userId);
+    return this._records.filter(r => r.userId === userId);
   },
 
   getMonthRecords(userId, year, month) {
@@ -100,7 +156,7 @@ const Storage = {
       .reduce((sum, r) => sum + (r.duration || 0), 0);
   },
 
-  // Streak calculation
+  // ===== Streak =====
   getStreak(userId) {
     const records = this.getUserRecords(userId);
     const dates = [...new Set(records.map(r => r.date.slice(0, 10)))].sort().reverse();
@@ -122,13 +178,29 @@ const Storage = {
     return streak;
   },
 
-  // Reset
-  resetAll() {
-    localStorage.removeItem(this.KEYS.PROFILES);
-    localStorage.removeItem(this.KEYS.RECORDS);
-    localStorage.removeItem(this.KEYS.CURRENT_USER);
-    this.init();
+  // ===== Reset =====
+  async resetAll() {
+    // Delete all records from Firestore
+    try {
+      const batch = db.batch();
+      const recordSnap = await this.recordsRef.get();
+      recordSnap.forEach(doc => batch.delete(doc.ref));
+      const profileSnap = await this.profilesRef.get();
+      profileSnap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    } catch (err) {
+      console.warn('Firestore resetAll failed:', err);
+    }
+
+    this._profiles = {};
+    this._records = [];
+    localStorage.removeItem('fitness_profiles');
+    localStorage.removeItem('fitness_records');
+    localStorage.removeItem('fitness_current_user');
+  },
+
+  // ===== Sync: refresh from Firestore =====
+  async refresh() {
+    await this.init();
   }
 };
-
-Storage.init();

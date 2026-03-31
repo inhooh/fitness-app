@@ -3,8 +3,17 @@ const App = {
   currentPage: 'home',
   walkTimerInterval: null,
 
-  init() {
-    Storage.init();
+  async init() {
+    // Show loading while Firestore loads
+    document.getElementById('app').innerHTML = `
+      <div class="setup-screen">
+        <div class="setup-logo">🚶‍♂️</div>
+        <div class="setup-title">함께 걷기</div>
+        <p class="setup-subtitle" style="margin-top:16px;">데이터 불러오는 중...</p>
+      </div>
+    `;
+
+    await Storage.init();
 
     if (!Storage.hasProfiles()) {
       this.showSetup();
@@ -97,18 +106,18 @@ const App = {
       </div>
     `;
 
-    document.getElementById('setup-done').addEventListener('click', () => {
+    document.getElementById('setup-done').addEventListener('click', async () => {
       const dadName = document.getElementById('dad-name').value.trim() || '아빠';
       const sonName = document.getElementById('son-name').value.trim() || '아들';
 
-      Storage.saveProfile('dad', {
+      await Storage.saveProfile('dad', {
         name: dadName,
         emoji: '👨',
         weight: parseFloat(document.getElementById('dad-weight').value) || 75,
         goalKm: parseFloat(document.getElementById('dad-goal').value) || 30
       });
 
-      Storage.saveProfile('son', {
+      await Storage.saveProfile('son', {
         name: sonName,
         emoji: '👦',
         weight: parseFloat(document.getElementById('son-weight').value) || 50,
@@ -390,13 +399,13 @@ const App = {
       }
     });
 
-    document.getElementById('walk-stop-btn')?.addEventListener('click', () => {
+    document.getElementById('walk-stop-btn')?.addEventListener('click', async () => {
       clearInterval(this.walkTimerInterval);
       const result = GPS.stop();
       const cal = Calories.calculate(profile.weight, result.distance);
 
-      // Save record
-      Storage.addRecord({
+      // Save record to Firestore
+      await Storage.addRecord({
         userId: uid,
         distance: result.distance,
         duration: result.duration,
@@ -623,14 +632,14 @@ const App = {
     document.getElementById('edit-dad')?.addEventListener('click', () => this.showEditModal('dad'));
     document.getElementById('edit-son')?.addEventListener('click', () => this.showEditModal('son'));
 
-    document.getElementById('add-sample')?.addEventListener('click', () => {
-      this.addSampleData();
+    document.getElementById('add-sample')?.addEventListener('click', async () => {
+      await this.addSampleData();
       this.navigate('home');
     });
 
-    document.getElementById('reset-data')?.addEventListener('click', () => {
+    document.getElementById('reset-data')?.addEventListener('click', async () => {
       if (confirm('정말 모든 데이터를 삭제하시겠습니까?')) {
-        Storage.resetAll();
+        await Storage.resetAll();
         this.hideNav();
         this.showSetup();
       }
@@ -669,8 +678,8 @@ const App = {
     });
 
     document.getElementById('modal-cancel').addEventListener('click', () => overlay.remove());
-    document.getElementById('modal-save').addEventListener('click', () => {
-      Storage.saveProfile(userId, {
+    document.getElementById('modal-save').addEventListener('click', async () => {
+      await Storage.saveProfile(userId, {
         name: document.getElementById('modal-name').value.trim() || profile.name,
         weight: parseFloat(document.getElementById('modal-weight').value) || profile.weight,
         goalKm: parseFloat(document.getElementById('modal-goal').value) || profile.goalKm
@@ -681,40 +690,44 @@ const App = {
   },
 
   /* ===== SAMPLE DATA ===== */
-  addSampleData() {
+  async addSampleData() {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
     const dadProfile = Storage.getProfile('dad');
     const sonProfile = Storage.getProfile('son');
 
+    const promises = [];
+
     for (let d = 1; d <= Math.min(now.getDate(), 28); d++) {
       // Dad: walks ~70% of days
       if (Math.random() < 0.7) {
         const dist = 1 + Math.random() * 3; // 1-4 km
         const date = new Date(year, month, d, 8 + Math.floor(Math.random() * 4), Math.floor(Math.random() * 60));
-        Storage.addRecord({
+        promises.push(Storage.addRecord({
           userId: 'dad',
           distance: Math.round(dist * 1000) / 1000,
           duration: Math.round(dist / 4.5 * 3600),
           calories: Calories.calculate(dadProfile.weight, dist),
           date: date.toISOString()
-        });
+        }));
       }
 
       // Son: walks ~60% of days
       if (Math.random() < 0.6) {
         const dist = 0.5 + Math.random() * 2.5; // 0.5-3 km
         const date = new Date(year, month, d, 15 + Math.floor(Math.random() * 4), Math.floor(Math.random() * 60));
-        Storage.addRecord({
+        promises.push(Storage.addRecord({
           userId: 'son',
           distance: Math.round(dist * 1000) / 1000,
           duration: Math.round(dist / 4 * 3600),
           calories: Calories.calculate(sonProfile.weight, dist),
           date: date.toISOString()
-        });
+        }));
       }
     }
+
+    await Promise.all(promises);
   },
 
   /* ===== CONFETTI ===== */
