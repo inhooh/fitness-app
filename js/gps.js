@@ -45,7 +45,7 @@ const GPS = {
       err => this._onError(err),
       {
         enableHighAccuracy: true,
-        maximumAge: 3000,
+        maximumAge: 1000,
         timeout: 10000
       }
     );
@@ -95,11 +95,11 @@ const GPS = {
 
     const { latitude, longitude, accuracy, altitude, altitudeAccuracy } = pos.coords;
 
-    // 정확도 필터 완화: 50m까지 허용 (기존 30m → 50m)
-    // 정확도가 낮을수록 거리 임계값을 높여 노이즈 방지
-    if (accuracy > 50) return;
+    // 정확도 필터: 30m 이내만 허용 (노이즈 방지)
+    if (accuracy > 30) return;
 
-    const distThreshold = accuracy > 30 ? 0.010 : accuracy > 15 ? 0.005 : 0.003;
+    // 거리 임계값: 낮게 설정하여 실제 경로를 더 정확히 추적
+    const distThreshold = accuracy > 20 ? 0.003 : 0.002; // 3m / 2m
 
     // 고도 업데이트
     if (altitude !== null && altitudeAccuracy !== null && altitudeAccuracy < 30) {
@@ -116,17 +116,27 @@ const GPS = {
     }
 
     // 거리 계산
+    const now = Date.now();
     const last = this.positions[this.positions.length - 1];
     if (last) {
       const dist = this._haversine(last.lat, last.lng, latitude, longitude);
+      const timeDiff = (now - last.time) / 1000; // seconds
+
       if (dist > distThreshold) {
-        this.totalDistance += dist;
-        this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
+        // 비현실적 이동 필터: 순간 속도 > 12km/h면 GPS 점프로 간주
+        const instantSpeed = timeDiff > 0 ? (dist / timeDiff) * 3600 : 0;
+        if (instantSpeed <= 12) {
+          this.totalDistance += dist;
+          this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: now });
+        } else {
+          // GPS 점프 → 위치만 갱신 (거리는 추가 안 함)
+          this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: now });
+        }
       }
       // 임계값 미만이면 위치 갱신하지 않음 (작은 이동 누적 보존)
     } else {
       // 첫 번째 위치는 항상 저장
-      this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
+      this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: now });
     }
 
     if (this.onUpdate) {
