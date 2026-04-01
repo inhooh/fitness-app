@@ -121,14 +121,27 @@ const GPS = {
       const dist = this._haversine(last.lat, last.lng, latitude, longitude);
       if (dist > distThreshold) {
         this.totalDistance += dist;
+        this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
       }
+      // 임계값 미만이면 위치 갱신하지 않음 (작은 이동 누적 보존)
+    } else {
+      // 첫 번째 위치는 항상 저장
+      this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
     }
-
-    this.positions.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
 
     if (this.onUpdate) {
       const duration = this.getElapsedSeconds();
-      const speed = duration > 0 ? (this.totalDistance / (duration / 3600)) : 0;
+      // 최근 구간 속도 계산 (마지막 2개 위치 기반)
+      let speed = 0;
+      if (this.positions.length >= 2) {
+        const p1 = this.positions[this.positions.length - 2];
+        const p2 = this.positions[this.positions.length - 1];
+        const segDist = this._haversine(p1.lat, p1.lng, p2.lat, p2.lng);
+        const segTime = (p2.time - p1.time) / 3600000; // hours
+        if (segTime > 0) speed = segDist / segTime;
+        // 비현실적 속도 필터 (걷기/달리기 최대 ~15km/h)
+        if (speed > 15) speed = 0;
+      }
       this.onUpdate(this.totalDistance, duration, speed, this.altitude, this.altitudeGain);
     }
   },

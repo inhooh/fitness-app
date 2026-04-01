@@ -1,5 +1,5 @@
 /* ===== App Controller ===== */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const App = {
   currentPage: 'home',
@@ -151,6 +151,7 @@ const App = {
     const todayDist = Storage.getTodayTotalDistance(uid);
     const todayCal = Storage.getTodayTotalCalories(uid);
     const todayDur = Storage.getTodayTotalDuration(uid);
+    const todayAlt = Storage.getTodayTotalAltitudeGain(uid);
     const monthDist = Storage.getMonthTotalDistance(uid, year, month);
     const monthDistOther = Storage.getMonthTotalDistance(other, year, month);
     const streak = Storage.getStreak(uid);
@@ -234,6 +235,15 @@ const App = {
             <div class="stat-label">운동 시간</div>
           </div>
         </div>
+        ${todayAlt > 0 ? `
+        <div class="stats-row">
+          <div class="stat-card" style="flex:1;">
+            <span class="stat-icon">⛰️</span>
+            <div class="stat-value">${Math.round(todayAlt)}<span class="stat-unit">m</span></div>
+            <div class="stat-label">오늘 상승 고도</div>
+          </div>
+        </div>
+        ` : ''}
 
         <!-- VS Card -->
         <div class="vs-card">

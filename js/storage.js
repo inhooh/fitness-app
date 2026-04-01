@@ -156,6 +156,11 @@ const Storage = {
       .reduce((sum, r) => sum + (r.duration || 0), 0);
   },
 
+  getTodayTotalAltitudeGain(userId) {
+    return this.getTodayRecords(userId)
+      .reduce((sum, r) => sum + (r.altitudeGain || 0), 0);
+  },
+
   // ===== Streak =====
   getStreak(userId) {
     const records = this.getUserRecords(userId);
