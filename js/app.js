@@ -1,5 +1,5 @@
 /* ===== App Controller ===== */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const App = {
   currentPage: 'home',
@@ -348,6 +348,16 @@ const App = {
               <div class="walk-stat-label">속도(km/h)</div>
             </div>
           </div>
+          <div class="walk-stats">
+            <div class="walk-stat-item">
+              <div class="walk-stat-value" id="walk-alt">--</div>
+              <div class="walk-stat-label">고도(m)</div>
+            </div>
+            <div class="walk-stat-item">
+              <div class="walk-stat-value" id="walk-alt-gain">0</div>
+              <div class="walk-stat-label">상승고도(m)</div>
+            </div>
+          </div>
           <div class="walk-controls">
             <button class="btn btn-pause" id="walk-pause-btn">
               <span class="material-icons-round">pause</span>
@@ -380,6 +390,13 @@ const App = {
               <div class="stat-label">시간</div>
             </div>
           </div>
+          <div class="stats-row" id="result-alt-row" style="display:none;">
+            <div class="stat-card" style="flex:1;">
+              <span class="stat-icon">⛰️</span>
+              <div class="stat-value" id="result-alt-gain">0<span class="stat-unit">m</span></div>
+              <div class="stat-label">상승 고도</div>
+            </div>
+          </div>
           <button class="btn btn-primary btn-large mt-20" id="walk-done-btn">
             <span class="material-icons-round">home</span>
             홈으로 돌아가기
@@ -410,11 +427,19 @@ const App = {
         btn.className = 'btn btn-primary';
       }
 
+      // 고도 복원
+      if (GPS.altitude !== null) {
+        document.getElementById('walk-alt').textContent = GPS.altitude;
+      }
+      document.getElementById('walk-alt-gain').textContent = Math.round(GPS.altitudeGain);
+
       // GPS 콜백을 새 DOM에 연결
-      GPS.onUpdate = (distance, duration, speed) => {
+      GPS.onUpdate = (distance, duration, speed, altitude, altGain) => {
         document.getElementById('walk-dist').textContent = distance.toFixed(3);
         document.getElementById('walk-cal').textContent = Calories.calculate(profile.weight, distance);
         document.getElementById('walk-speed').textContent = speed.toFixed(1);
+        if (altitude !== null) document.getElementById('walk-alt').textContent = altitude;
+        document.getElementById('walk-alt-gain').textContent = Math.round(altGain);
       };
 
       // 타이머 재시작
@@ -426,10 +451,12 @@ const App = {
     }
 
     document.getElementById('walk-start-btn')?.addEventListener('click', () => {
-      const started = GPS.start((distance, duration, speed) => {
+      const started = GPS.start((distance, duration, speed, altitude, altGain) => {
         document.getElementById('walk-dist').textContent = distance.toFixed(3);
         document.getElementById('walk-cal').textContent = Calories.calculate(profile.weight, distance);
         document.getElementById('walk-speed').textContent = speed.toFixed(1);
+        if (altitude !== null) document.getElementById('walk-alt').textContent = altitude;
+        document.getElementById('walk-alt-gain').textContent = Math.round(altGain);
       });
 
       if (started) {
@@ -467,6 +494,7 @@ const App = {
         distance: result.distance,
         duration: result.duration,
         calories: cal,
+        altitudeGain: result.altitudeGain,
         positions: result.positions.length
       });
 
@@ -476,6 +504,12 @@ const App = {
       document.getElementById('result-dist').textContent = result.distance.toFixed(2);
       document.getElementById('result-cal').textContent = cal;
       document.getElementById('result-time').textContent = this.formatDurationShort(result.duration);
+
+      // 상승 고도 표시 (데이터가 있을 때만)
+      if (result.altitudeGain > 0) {
+        document.getElementById('result-alt-row').style.display = '';
+        document.getElementById('result-alt-gain').textContent = result.altitudeGain;
+      }
 
       this.confetti();
     });
