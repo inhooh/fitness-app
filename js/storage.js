@@ -132,8 +132,12 @@ const Storage = {
   },
 
   getTodayRecords(userId) {
-    const today = new Date().toISOString().slice(0, 10);
-    return this.getUserRecords(userId).filter(r => r.date.slice(0, 10) === today);
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+    return this.getUserRecords(userId).filter(r => {
+      const rd = new Date(r.date);
+      return rd.getFullYear() === y && rd.getMonth() === m && rd.getDate() === d;
+    });
   },
 
   getMonthTotalDistance(userId, year, month) {
@@ -164,11 +168,17 @@ const Storage = {
   // ===== Streak =====
   getStreak(userId) {
     const records = this.getUserRecords(userId);
-    const dates = [...new Set(records.map(r => r.date.slice(0, 10)))].sort().reverse();
+    // 로컬 타임존 기준 날짜 문자열로 변환
+    const toLocalDate = (dateStr) => {
+      const d = new Date(dateStr);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+    const dates = [...new Set(records.map(r => toLocalDate(r.date)))].sort().reverse();
     if (dates.length === 0) return 0;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const now = new Date();
+    const today = toLocalDate(now.toISOString());
+    const yesterday = toLocalDate(new Date(now - 86400000).toISOString());
 
     if (dates[0] !== today && dates[0] !== yesterday) return 0;
 
