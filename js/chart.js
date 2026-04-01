@@ -84,6 +84,8 @@ const Charts = {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
+    const today = new Date().getDate();
+
     // Build daily cumulative
     const dailyDist = new Array(daysInMonth).fill(0);
     records.forEach(r => {
@@ -95,13 +97,19 @@ const Charts = {
     let sum = 0;
     for (let i = 0; i < daysInMonth; i++) {
       sum += dailyDist[i];
-      cumulative.push(Math.round(sum * 100) / 100);
+      // 오늘 이후는 null로 처리 (선이 오늘까지만 그려짐)
+      cumulative.push(i < today ? Math.round(sum * 100) / 100 : null);
     }
 
-    // Goal line (linear)
+    // Goal line: 오늘까지만 표시
     const goalLine = Array.from({ length: daysInMonth }, (_, i) =>
-      Math.round((goalKm / daysInMonth) * (i + 1) * 100) / 100
+      i < today ? Math.round((goalKm / daysInMonth) * (i + 1) * 100) / 100 : null
     );
+
+    // Y축 최대값: 현재 누적 vs 오늘까지의 목표 페이스 중 큰 값 기준
+    const currentCumMax = sum;
+    const currentGoalPace = (goalKm / daysInMonth) * today;
+    const yMax = Math.ceil(Math.max(currentCumMax, currentGoalPace) * 1.2);
 
     const labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
 
@@ -117,7 +125,8 @@ const Charts = {
             borderDash: [5, 5],
             borderWidth: 2,
             pointRadius: 0,
-            fill: false
+            fill: false,
+            spanGaps: false
           },
           {
             label: '실제 누적',
@@ -127,7 +136,8 @@ const Charts = {
             borderWidth: 2.5,
             pointRadius: 0,
             fill: true,
-            tension: 0.3
+            tension: 0.3,
+            spanGaps: false
           }
         ]
       },
@@ -152,7 +162,8 @@ const Charts = {
           y: {
             grid: { color: 'rgba(255,255,255,0.05)' },
             ticks: { color: '#64748b', font: { size: 11 } },
-            beginAtZero: true
+            beginAtZero: true,
+            max: yMax > 0 ? yMax : undefined
           }
         }
       }

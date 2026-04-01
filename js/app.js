@@ -1,5 +1,5 @@
 /* ===== App Controller ===== */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5.1';
 
 const App = {
   currentPage: 'home',
@@ -152,6 +152,8 @@ const App = {
     const todayCal = Storage.getTodayTotalCalories(uid);
     const todayDur = Storage.getTodayTotalDuration(uid);
     const todayAlt = Storage.getTodayTotalAltitudeGain(uid);
+    const todayAvgSpeed = todayDur > 0 ? (todayDist / (todayDur / 3600)).toFixed(1) : '0.0';
+    const todaySteps = Math.round(todayDist * 1312.5); // 평균 보폭 ~0.762m → 1km당 약 1312.5걸음
     const monthDist = Storage.getMonthTotalDistance(uid, year, month);
     const monthDistOther = Storage.getMonthTotalDistance(other, year, month);
     const streak = Storage.getStreak(uid);
@@ -235,15 +237,23 @@ const App = {
             <div class="stat-label">운동 시간</div>
           </div>
         </div>
-        ${todayAlt > 0 ? `
         <div class="stats-row">
-          <div class="stat-card" style="flex:1;">
+          <div class="stat-card">
             <span class="stat-icon">⛰️</span>
             <div class="stat-value">${Math.round(todayAlt)}<span class="stat-unit">m</span></div>
-            <div class="stat-label">오늘 상승 고도</div>
+            <div class="stat-label">상승 고도</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">⚡</span>
+            <div class="stat-value">${todayAvgSpeed}<span class="stat-unit">km/h</span></div>
+            <div class="stat-label">평균 속도</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">👣</span>
+            <div class="stat-value">${todaySteps.toLocaleString()}</div>
+            <div class="stat-label">걸음 수</div>
           </div>
         </div>
-        ` : ''}
 
         <!-- VS Card -->
         <div class="vs-card">
