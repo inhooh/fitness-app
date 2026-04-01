@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fitness-v2';
+const CACHE_NAME = 'fitness-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -26,8 +26,15 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Network First: 네트워크에서 최신 파일을 가져오고, 실패 시 캐시 사용
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request)
+      .then(res => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
