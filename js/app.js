@@ -1,4 +1,6 @@
 /* ===== App Controller ===== */
+const APP_VERSION = '1.1.0';
+
 const App = {
   currentPage: 'home',
   walkTimerInterval: null,
@@ -41,22 +43,12 @@ const App = {
   },
 
   navigate(page) {
-    // 산책 중 다른 페이지로 이동 시 확인
-    if (GPS.isTracking && page !== 'walk') {
-      if (!confirm('산책이 진행 중입니다. 페이지를 이동하면 현재 산책이 종료됩니다. 이동하시겠습니까?')) {
-        // 네비게이션 버튼 상태 복원
-        document.querySelectorAll('.nav-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.page === 'walk');
-        });
-        return;
-      }
-      // 산책 종료 후 기록 저장
-      this._autoSaveWalk();
-    }
-
     this.currentPage = page;
     Charts.destroyAll();
-    clearInterval(this.walkTimerInterval);
+    // 산책 중이 아닐 때만 타이머 정리 (산책 중이면 백그라운드에서 GPS 유지)
+    if (!GPS.isTracking) {
+      clearInterval(this.walkTimerInterval);
+    }
     clearInterval(this._recordsRefreshInterval);
 
     document.querySelectorAll('.nav-btn').forEach(b => {
@@ -72,25 +64,6 @@ const App = {
     }
 
     app.querySelector('.page-enter')?.offsetHeight; // force reflow for animation
-  },
-
-  // 산책 중 페이지 이동 시 자동 저장
-  async _autoSaveWalk() {
-    clearInterval(this.walkTimerInterval);
-    const result = GPS.stop();
-    const uid = Storage.getCurrentUser();
-    const profile = Storage.getProfile(uid);
-    const cal = Calories.calculate(profile.weight, result.distance);
-
-    if (result.distance > 0.001) {
-      await Storage.addRecord({
-        userId: uid,
-        distance: result.distance,
-        duration: result.duration,
-        calories: cal,
-        positions: result.positions.length
-      });
-    }
   },
 
   _recordsRefreshInterval: null,
@@ -285,10 +258,17 @@ const App = {
         </div>
 
         <!-- Start Walk Button -->
+        ${GPS.isTracking ? `
+        <button class="btn btn-start" id="home-start-walk" style="background: linear-gradient(135deg, var(--accent), #d97706); box-shadow: 0 4px 16px rgba(245,158,11,0.4); animation: pulse 2s infinite;">
+          <span class="material-icons-round">directions_walk</span>
+          산책 진행 중 - 돌아가기
+        </button>
+        ` : `
         <button class="btn btn-start pulse" id="home-start-walk">
           <span class="material-icons-round">directions_walk</span>
           산책 시작하기
         </button>
+        `}
       </div>
     `;
   },
@@ -296,6 +276,9 @@ const App = {
   async initHome() {
     // Refresh data from Firestore on each visit
     await Storage.refresh();
+
+    // 다른 페이지로 이동했으면 re-render 하지 않음
+    if (this.currentPage !== 'home') return;
 
     // Re-render with fresh data
     const app = document.getElementById('app');
@@ -409,6 +392,38 @@ const App = {
   initWalk() {
     const uid = Storage.getCurrentUser();
     const profile = Storage.getProfile(uid);
+
+    // GPS가 이미 추적 중이면 tracking UI 복원
+    if (GPS.isTracking) {
+      document.getElementById('walk-idle').classList.add('hidden');
+      document.getElementById('walk-tracking').classList.remove('hidden');
+
+      // 현재 값으로 UI 업데이트
+      document.getElementById('walk-dist').textContent = GPS.totalDistance.toFixed(3);
+      document.getElementById('walk-cal').textContent = Calories.calculate(profile.weight, GPS.totalDistance);
+      document.getElementById('walk-timer').textContent = this.formatTime(GPS.getElapsedSeconds());
+
+      // 일시정지 상태 반영
+      if (GPS.isPaused) {
+        const btn = document.getElementById('walk-pause-btn');
+        btn.innerHTML = '<span class="material-icons-round">play_arrow</span> 계속하기';
+        btn.className = 'btn btn-primary';
+      }
+
+      // GPS 콜백을 새 DOM에 연결
+      GPS.onUpdate = (distance, duration, speed) => {
+        document.getElementById('walk-dist').textContent = distance.toFixed(3);
+        document.getElementById('walk-cal').textContent = Calories.calculate(profile.weight, distance);
+        document.getElementById('walk-speed').textContent = speed.toFixed(1);
+      };
+
+      // 타이머 재시작
+      clearInterval(this.walkTimerInterval);
+      this.walkTimerInterval = setInterval(() => {
+        const sec = GPS.getElapsedSeconds();
+        document.getElementById('walk-timer').textContent = this.formatTime(sec);
+      }, 1000);
+    }
 
     document.getElementById('walk-start-btn')?.addEventListener('click', () => {
       const started = GPS.start((distance, duration, speed) => {
@@ -688,6 +703,10 @@ const App = {
               </div>
             </div>
           </div>
+        </div>
+
+        <div style="text-align:center; margin-top:32px; padding-bottom:20px;">
+          <span style="font-size:12px; color:var(--text-muted);">함께 걷기 v${APP_VERSION}</span>
         </div>
       </div>
     `;
